@@ -1,81 +1,93 @@
 extends Node
 
 var DEFAULT_PORT = 42069 #nice
-var MAX_PEERS = 4 #3 users and 1 reserved for the server itself
+var MAX_PEERS = 5 #4 users and 1 reserved for the server itself
 
-var players = {}
-var player_name
-
-signal player_list_changed()
 signal connection_failed()
-signal connection_succeeded()
+signal connecteion_succeeded()
+signal player_list_changed()
 signal game_ended()
 signal game_error(what)
 
-func start_server():
-	player_name = "Server"
-	var host = NetworkedMultiplayerENet.new()
-	
-	host.create_server(DEFAULT_PORT, MAX_PEERS)
-	get_tree().set_network_peer(host)
-	
-func join_server(ip, new_player_name):
-	player_name = new_player_name
-	var host = NetworkedMultiplayerENet.new()
-	
-	host.create_client(ip, DEFAULT_PORT)
-	get_tree().set_network_peer(host)
+var player_name
+var players = {}
 
-#ignore
-func _player_connected():
+	
+func _ready():
+#warning-ignore:return_value_discarded
+	get_tree().connect("network_peer_connected", self, "_player_connected")
+#warning-ignore:return_value_discarded
+	get_tree().connect("network_peer_disconnected", self,"_player_disconnected")
+#warning-ignore:return_value_discarded
+	get_tree().connect("connected_to_server", self, "_connected_ok")
+#warning-ignore:return_value_discarded
+	get_tree().connect("connection_failed", self, "_connected_fail")
+#warning-ignore:return_value_discarded
+	get_tree().connect("server_disconnected", self, "_server_disconnected")
+
+func _player_connected(id):
 	pass
 	
 func _player_disconnected(id):
-	emit_signal("player_list_changed")
-	emit_signal("game_ended")
-	unregister_player(id)
-	rpc("unregister_player", id)
-
+	pass
 
 func _connected_ok():
 	rpc("register_player", get_tree().get_network_unique_id(), player_name)
-	emit_signal("connection_succeeded")
+	emit_signal("connecteion_succeeded")
 	
-remote func unregister_player(id):
-	emit_signal("player_list_changed")
-	players.erase(id)
+	pass
 	
-remote func register_player(id, new_player_name):
+remote func register_player(id, name):
 	if get_tree().is_network_server():
-		rpc_id(id, "register_player", 1, player_name)
-		for pid in players:
-			rpc_id(id, "register_player", pid, players[pid])
-			rpc_id(pid, "register_player", id, new_player_name)
-			
-	players[id] = new_player_name
+		 #If we are the server, let everyone know about the new player
+		rpc_id(id, "register_player", 1, player_name) # Send myself to new dude
+		for p_id in players: # Then, for each remote player
+#			print(players.size())
+			rpc_id(id, "register_player", p_id, players[p_id]) # Send player to new dude
+			rpc_id(p_id, "register_player", id, name) # Send new dude to player
+
+	players[id] = name
 	emit_signal("player_list_changed")
 	
+func remove_player(id):
+	players.erase(id)
+
+func host_game(username):
+	player_name = username
+	var host = NetworkedMultiplayerENet.new()
+	host.create_server(DEFAULT_PORT, MAX_PEERS)
+	get_tree().set_network_peer(host)
 	
+func join_game(ip, username):
+	player_name = username
+	var host = NetworkedMultiplayerENet.new()
+	host.create_client(ip, DEFAULT_PORT)
+	get_tree().set_network_peer(host)
+
 func _connected_fail():
-	get_tree().set_network_peer(null)
 	emit_signal("connection_failed")
+	pass
 	
 func _server_disconnected():
-	emit_signal("game_error", "Server has been disconnected")
-	get_tree().set_network_peer(null)
-	players.clear()
+	emit_signal("game_ended")
+	pass
 	
-func spawn_player():
-	var player_scene = load("res://player/player.tscn")
-	var player = player_scene.instance()
-	get_parent().add_child(player)
-	var spawn_pos = get_node("spawn_points/0").position
-	player.position = spawn_pos
+func begin_game():
 	
+	assert(get_tree().is_network_server())
 	
-func _ready():
-	get_tree().connect("network_peer_connected", self, "_player_connected")
-	get_tree().connect("network_peer_disconnected", self,"_player_disconnected")
-	get_tree().connect("connected_to_server", self, "_connected_ok")
-	get_tree().connect("connection_failed", self, "_connected_fail")
-	get_tree().connect("server_disconnected", self, "_server_disconnected")
+	var world = load("res://field.tscn").instance()
+	var player = load("res://player/player.tscn").instance()
+
+	get_tree().get_root().add_child(world)
+	get_tree().get_root().get_node("lobby").hide()
+
+	var pos = world.get_node("spawn_points/0").position
+
+	player.position = pos
+	player.set_network_master(1) 
+
+	world.get_node("players").add_child(player)
+	
+func get_playername():
+	return player_name

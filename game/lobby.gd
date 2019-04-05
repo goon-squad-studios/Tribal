@@ -1,6 +1,5 @@
 extends Control
 
-
 func ready():
 	playerntwrk.connect("connection_failed", self, "_on_connection_failed")
 	playerntwrk.connect("connection_succeeded", self, "_on_connection_success")
@@ -9,34 +8,40 @@ func ready():
 	playerntwrk.connect("game_error", self, "_on_game_error")
 
 func _on_connect_server_pressed():
-	var username = get_node("Panel/name_tag/username").text
-	#eventually implement a "is_valid_username" function
+	#make sure the info is good
+	var username = get_node("connect/name_tag/username").text
+	var ip = get_node("connect/ip_tag/ip").text
+	var err = get_node("connect/err").text
 	if username == "":
-		get_node("Panel/err").text = "Please enter a valid username"
+		err = "Please enter a valid username"
 		return
-	#check to make sure the ip's good before connecting
-	var ip = get_node("Panel/ip_tag/ip").text
-	if not ip.is_valid_ip_address():
-		get_node("Panel/err").text = "IPv4 not valid"
+	elif not ip.is_valid_ip_address():
+		err = "Please enter a valid IP adress"
 		return
+	#if the user and ip are good, continue
+	get_node("connect/host_server").disabled = true
+	get_node("connect/connect_server").disabled = true
+	playerntwrk.join_game(ip, username)
 	
-	#attempt to connect
-	var host = NetworkedMultiplayerENet.new()
-	print("connecting...")
-	host.create_client(ip, 42069)
-	get_tree().set_network_peer(host)
-
 func _on_host_server_pressed():
-	#eventually implement a "is_valid_username" function
-	if get_node("Panel/ip_tag/ip").text == "":
-		get_node("Panel/err").text = "Please enter a valid username"
+	var username = get_node("connect/name_tag/username").text
+	var err = get_node("connect/err").text
+	if username == "":
+		err = "Please enter a valid username"
 		return
-#bring them to a lobby table if it's a good username
-	print("hello")
+	#if the user is good, continue
+	playerntwrk.host_game(username)
+	
+	get_node("connect").hide()
+	get_node("players").show()
+	get_node("players/player_list").add_item(username)
 	
 func _on_connection_failed():
+	get_node("connect/host_server").disabled = true
+	get_node("connect/connect_server").disabled = true
+	get_node("connect/err").text = "Couldn't connect to host"
 	pass
-	
+
 func _on_connection_success():
 	pass
 
@@ -48,3 +53,7 @@ func _on_game_ended():
 
 func _on_game_error():
 	pass
+
+
+func _on_start_pressed():
+	playerntwrk.begin_game()
